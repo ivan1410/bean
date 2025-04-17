@@ -118,22 +118,42 @@ def measure_beans(image_path,
         # The smaller dimension is the bean's width in mm (since in warped space 1 px = 1 mm)
         bean_width_mm = min(w, h)
 
-        # We want to place text in the original image, so transform the center back
-        center_warped_pt = np.array([[center_warped]], dtype=np.float32)  # shape (1,1,2)
-        center_original = cv2.perspectiveTransform(center_warped_pt, M_inv)
-        cx, cy = center_original[0][0]
+        # Get the 4 corner points of the rotated rectangle in warped space
+        box_warped = cv2.boxPoints(rect)
 
-        # Draw the contour on the original image for visualization
-        cv2.drawContours(orig, [cnt], -1, (0, 255, 0), 2)
+        # Transform these corners back to the original image space
+        box_original = cv2.perspectiveTransform(np.array([box_warped], dtype=np.float32), M_inv)
+        box_original = np.intp(box_original[0]) # Convert points to integer for drawing
 
-        # Annotate with bean ID and measured width
-        text_label = f"Bean {bean_id}: {bean_width_mm:.1f} mm"
+        # Draw the rotated rectangle in red
+        cv2.drawContours(orig, [box_original], 0, (0, 0, 255), 2) # BGR Red
+
+        # Determine midpoint of the shorter side for text placement
+        # Calculate squared distances of adjacent sides
+        d1_sq = np.sum((box_original[0] - box_original[1])**2)
+        d2_sq = np.sum((box_original[1] - box_original[2])**2)
+
+        if d1_sq < d2_sq:
+            # Side 0-1 (and 2-3) is shorter (width)
+            midpoint_width = (box_original[0] + box_original[1]) // 2
+            # Use midpoint of the other side for length visualization (optional)
+            # midpoint_length = (box_original[1] + box_original[2]) // 2
+        else:
+            # Side 1-2 (and 3-0) is shorter (width)
+            midpoint_width = (box_original[1] + box_original[2]) // 2
+            # Use midpoint of the other side for length visualization (optional)
+            # midpoint_length = (box_original[0] + box_original[1]) // 2
+
+        text_pos = tuple(midpoint_width)
+
+        # Annotate with measured width next to the width line
+        text_label = f"{bean_width_mm:.1f} mm" # Changed label to only show width
         # Draw text with a black outline first
-        cv2.putText(orig, text_label, (int(cx), int(cy)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3, cv2.LINE_AA)
+        cv2.putText(orig, text_label, text_pos,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA) # Slightly smaller font
         # Then draw white text on top for clarity
-        cv2.putText(orig, text_label, (int(cx), int(cy)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(orig, text_label, text_pos,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
         results.append((bean_id, bean_width_mm))
 
